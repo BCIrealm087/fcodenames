@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Spymaster / Operative Tool</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .container { max-width: 600px; margin: auto; }
+    label { display: block; margin-top: 10px; }
+    /* Normal text inputs styling */
+    input.normal-input { 
+      width: 100%; 
+      padding: 8px; 
+      border: 1px solid #ccc; 
+      outline: none;
+      box-sizing: border-box;
+    }
+    button { margin-top: 15px; padding: 10px 15px; }
+    button:disabled { background-color: #ddd; }
+    .toggle-buttons { margin-bottom: 20px; }
+    .toggle-buttons button { margin-right: 10px; }
+    .output { margin-top: 15px; background: #f0f0f0; padding: 10px; }
+    .radio-group { margin-top: 5px; }
+    .radio-group label { display: inline-block; margin-right: 10px; font-weight: normal; }
+    .word-count { margin-top: 5px; font-style: italic; }
+    .error { color: red; font-size: 0.9em; }
+    /* Tag container styles */
+    .tag-container {
+      display: flex;
+      flex-wrap: wrap;
+      border: 1px solid #ccc;
+      padding: 5px;
+      min-height: 40px;
+      cursor: text;
+    }
+    .tag-container input {
+      flex: 1;
+      min-width: 100px;
+      border: none;
+      outline: none;
+      padding: 5px;
+    }
+    .tag {
+      background-color: #e0e0e0;
+      border-radius: 3px;
+      padding: 5px 8px;
+      margin: 3px;
+      display: flex;
+      align-items: center;
+    }
+    .tag .remove-tag {
+      margin-left: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="toggle-buttons">
+      <button onclick="showSpymaster()">Spymaster</button>
+      <button onclick="showOperative()">Operative</button>
+    </div>
+
+    <!-- Spymaster Interface -->
+    <div id="spymasterDiv">
+      <h2>Spymaster GUI</h2>
+      <label for="spymaster-target-input">Target Words (separate with commas):</label>
+      <div id="spymaster-target-container" class="tag-container">
+        <input type="text" id="spymaster-target-input" placeholder="Type a word and hit comma or Enter">
+      </div>
+      <div id="spymaster-target-error" class="error"></div>
+
+      <label for="spymaster-rest-input">Rest of the Words (separate with commas):</label>
+      <div id="spymaster-rest-container" class="tag-container">
+        <input type="text" id="spymaster-rest-input" placeholder="Type a word and hit comma or Enter">
+      </div>
+      <div id="spymaster-rest-error" class="error"></div>
+
+      <div id="spymaster-total" class="word-count">Total words: 0</div>
+      <div id="spymaster-total-error" class="error"></div>
+
+      <button id="spymaster-run" onclick="runSpymaster()" disabled>Run Spymaster</button>
+      <div id="spymaster-output" class="output"></div>
+    </div>
+
+    <!-- Operative Interface -->
+    <div id="operativeDiv" style="display:none;">
+      <h2>Operative GUI</h2>
+      <label for="operative-board-input">Board's Words (separate with commas):</label>
+      <div id="operative-board-container" class="tag-container">
+        <input type="text" id="operative-board-input" placeholder="Type a word and hit comma or Enter">
+      </div>
+      <div id="operative-board-error" class="error"></div>
+      <div id="operative-total" class="word-count">Total words: 0</div>
+      <div id="operative-total-error" class="error"></div>
+
+      <label>Starting Number of Words:</label>
+      <div class="radio-group" oninput="validateOperative()">
+        <input type="radio" id="nine" name="num-words" value="9">
+        <label for="nine" style="color: black;">9</label>
+        <input type="radio" id="eight" name="num-words" value="8">
+        <label for="eight" style="color: black;">8</label>
+      </div>
+      <div id="operative-num-words-error" class="error"></div>
+
+      <label for="operative-first">First Turn's Word:</label>
+      <input type="text" id="operative-first" class="normal-input" placeholder="First word" oninput="validateOperative()">
+      <div id="operative-first-error" class="error"></div>
+
+      <label for="operative-second">Second Turn's Word:</label>
+      <input type="text" id="operative-second" class="normal-input" placeholder="Second word" oninput="validateOperative()">
+      <div id="operative-second-error" class="error"></div>
+
+      <button id="operative-run" onclick="runOperative()" disabled>Run Operative</button>
+      <div id="operative-output" class="output"></div>
+    </div>
+  </div>
+
+  <script>
+    // Global variable to store the CSV dictionary data.
+    var dictionaryData = [];
+
+    document.addEventListener("DOMContentLoaded", function() {
+      fetch("dictionary.csv")
+        .then(response => response.text())
+        .then(text => { dictionaryData = parseCSV(text); })
+        .catch(error => { console.error("Error loading dictionary:", error); });
+      
+      // Initialize tag inputs
+      initTagInput("spymaster-target-container", "spymaster-target-input");
+      initTagInput("spymaster-rest-container", "spymaster-rest-input");
+      initTagInput("operative-board-container", "operative-board-input");
+
+      // Trigger initial validation so errors display immediately.
+      updateSpymasterTotal();
+      validateSpymaster();
+      updateOperativeTotal();
+      validateOperative();
+    });
+
+    // Simple CSV parser.
+    function parseCSV(text) {
+      let lines = text.trim().split("\n");
+      let data = [];
+      for (let line of lines) {
+        let row = line.split(",").map(x => x.trim());
+        data.push(row);
+      }
+      return data;
+    }
+
+    // Generate all combinations of array elements (choosing k elements).
+    function combinations(arr, k) {
+      let result = [];
+      function combinate(start, combo) {
+        if (combo.length === k) {
+          result.push(combo);
+          return;
+        }
+        for (let i = start; i < arr.length; i++) {
+          combinate(i + 1, combo.concat([arr[i]]));
+        }
+      }
+      combinate(0, []);
+      return result;
+    }
+
+    // Compare two arrays (order matters).
+    function arraysEqual(a, b) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    }
+
+    /* Tag Input Functionality */
+    function initTagInput(containerId, inputId) {
+      const container = document.getElementById(containerId);
+      const input = document.getElementById(inputId);
+
+      // When container is clicked, focus the input.
+      container.addEventListener("click", function() {
+        input.focus();
+      });
+
+      input.addEventListener("keydown", function(e) {
+        if (e.key === "," || e.key === "Enter") {
+          e.preventDefault();
+          let text = input.value.trim();
+          if (text !== "") {
+            addTag(container, text);
+          }
+          input.value = "";
+          updateAll(); // Update totals and validations.
+        }
+      });
+
+      input.addEventListener("blur", function() {
+        let text = input.value.trim();
+        if (text !== "") {
+          addTag(container, text);
+          input.value = "";
+          updateAll();
+        }
+      });
+    }
+
+    function addTag(container, text) {
+      // Create tag element.
+      const tagElem = document.createElement("span");
+      tagElem.className = "tag";
+      // Create a text node for the tag text.
+      const textNode = document.createTextNode(text);
+      tagElem.appendChild(textNode);
+      // Create remove button.
+      const removeBtn = document.createElement("span");
+      removeBtn.className = "remove-tag";
+      removeBtn.textContent = "×";
+      removeBtn.onclick = function(e) {
+        e.stopPropagation();
+        container.removeChild(tagElem);
+        updateAll();
+      };
+      tagElem.appendChild(removeBtn);
+      // Insert tag before the input field.
+      container.insertBefore(tagElem, container.lastElementChild);
+    }
+
+    // Returns an array of words (tags) from the given container.
+    function getTags(containerId) {
+      const container = document.getElementById(containerId);
+      const tagElems = container.querySelectorAll(".tag");
+      let words = [];
+      tagElems.forEach(tag => {
+        // The first child node contains the text.
+        let text = tag.childNodes[0].nodeValue.trim();
+        words.push(text);
+      });
+      return words;
+    }
+
+    // Update totals and run validations.
+    function updateAll() {
+      updateSpymasterTotal();
+      validateSpymaster();
+      updateOperativeTotal();
+      validateOperative();
+    }
+
+    // Spymaster: update total words from tag inputs.
+    function updateSpymasterTotal() {
+      const targetWords = getTags("spymaster-target-container");
+      const restWords = getTags("spymaster-rest-container");
+      const total = targetWords.length + restWords.length;
+      document.getElementById("spymaster-total").textContent = "Total words: " + total;
+    }
+
+    // Operative: update total words from board tag input.
+    function updateOperativeTotal() {
+      const boardWords = getTags("operative-board-container");
+      const total = boardWords.length;
+      document.getElementById("operative-total").textContent = "Total words: " + total;
+    }
+
+    // Validate Spymaster inputs.
+    function validateSpymaster() {
+      const targetWords = getTags("spymaster-target-container");
+      const restWords = getTags("spymaster-rest-container");
+      const totalCount = targetWords.length + restWords.length;
+      
+      const targetError = document.getElementById("spymaster-target-error");
+      const restError = document.getElementById("spymaster-rest-error");
+      const totalError = document.getElementById("spymaster-total-error");
+      const runButton = document.getElementById("spymaster-run");
+
+      // Clear errors.
+      targetError.textContent = "";
+      restError.textContent = "";
+      totalError.textContent = "";
+
+      let valid = true;
+
+      if (targetWords.length === 0) {
+        targetError.textContent = "Target words cannot be empty.";
+        valid = false;
+      }
+      if (restWords.length === 0) {
+        restError.textContent = "Rest of the words cannot be empty.";
+        valid = false;
+      }
+      if (targetWords.length !== 8 && targetWords.length !== 9) {
+        targetError.textContent = "Target words must be exactly 8 or 9 words. Currently: " + targetWords.length;
+        valid = false;
+      }
+      if (totalCount !== 25) {
+        totalError.textContent = "Total words (target + rest) must equal 25. Currently: " + totalCount;
+        valid = false;
+      }
+      runButton.disabled = !valid;
+      return valid;
+    }
+
+    // Validate Operative inputs.
+    function validateOperative() {
+      const boardWords = getTags("operative-board-container");
+      const totalCount = boardWords.length;
+      
+      const boardError = document.getElementById("operative-board-error");
+      const totalError = document.getElementById("operative-total-error");
+      const numWordsError = document.getElementById("operative-num-words-error");
+      const firstError = document.getElementById("operative-first-error");
+      const secondError = document.getElementById("operative-second-error");
+      const runButton = document.getElementById("operative-run");
+
+      // Clear errors.
+      boardError.textContent = "";
+      totalError.textContent = "";
+      numWordsError.textContent = "";
+      firstError.textContent = "";
+      secondError.textContent = "";
+
+      let valid = true;
+
+      if (boardWords.length === 0) {
+        boardError.textContent = "Board's words cannot be empty.";
+        valid = false;
+      }
+      if (totalCount !== 25) {
+        totalError.textContent = "Total board words must equal 25. Currently: " + totalCount;
+        valid = false;
+      }
+      // Validate initial number of words.
+      const numWordsRadio = document.querySelector('input[name="num-words"]:checked');
+      if (!numWordsRadio) {
+        numWordsError.textContent = "Please select an initial number of words.";
+        valid = false;
+      }
+      // Validate first turn's word.
+      const firstField = document.getElementById("operative-first");
+      if (firstField.value.trim() === "") {
+        firstError.textContent = "First turn's word cannot be empty.";
+        valid = false;
+      } else if (firstField.value.trim().split(/\s+/).length !== 1) {
+        firstError.textContent = "First turn's word must contain exactly 1 word.";
+        valid = false;
+      }
+      // Validate second turn's word.
+      const secondField = document.getElementById("operative-second");
+      if (secondField.value.trim() === "") {
+        secondError.textContent = "Second turn's word cannot be empty.";
+        valid = false;
+      } else if (secondField.value.trim().split(/\s+/).length !== 1) {
+        secondError.textContent = "Second turn's word must contain exactly 1 word.";
+        valid = false;
+      }
+      runButton.disabled = !valid;
+      return valid;
+    }
+
+    // Spymaster functionality.
+    function runSpymaster() {
+      if (!validateSpymaster()) return;
+      if (dictionaryData.length === 0) {
+        alert("Dictionary not loaded yet.");
+        return;
+      }
+      const L2 = getTags("spymaster-target-container");
+      const restWords = getTags("spymaster-rest-container");
+      const L1 = restWords.concat(L2);
+      L1.sort();
+      const N2 = L2.length;
+
+      const allCombos = combinations(L1, N2);
+      const L2_sorted = [...L2].sort();
+      let L2_pos = -1;
+      for (let i = 0; i < allCombos.length; i++) {
+        let comboSorted = [...allCombos[i]].sort();
+        if (arraysEqual(comboSorted, L2_sorted)) {
+          L2_pos = i;
+          break;
+        }
+      }
+      if (L2_pos === -1) {
+        document.getElementById("spymaster-output").textContent = "Target words combination not found.";
+        return;
+      }
+      const N3 = dictionaryData.length;
+      const section = Math.floor(L2_pos / N3);
+      const pos = L2_pos % N3;
+      const word1 = Array.isArray(dictionaryData[section]) ? dictionaryData[section].join(", ") : dictionaryData[section];
+      const word2 = Array.isArray(dictionaryData[pos]) ? dictionaryData[pos].join(", ") : dictionaryData[pos];
+      document.getElementById("spymaster-output").textContent = "Output: " + word1 + " | " + word2;
+    }
+
+    // Operative functionality.
+    function runOperative() {
+      if (!validateOperative()) return;
+      if (dictionaryData.length === 0) {
+        alert("Dictionary not loaded yet.");
+        return;
+      }
+      const boardWords = getTags("operative-board-container");
+      boardWords.sort();
+
+      const numWordsRadio = document.querySelector('input[name="num-words"]:checked');
+      const N2 = parseInt(numWordsRadio.value);
+      const firstWord = document.getElementById("operative-first").value.trim();
+      const secondWord = document.getElementById("operative-second").value.trim();
+
+      const allCombos = combinations(boardWords, N2);
+      const dictionaryFlat = dictionaryData.map(row => Array.isArray(row) ? row[0] : row);
+      const section = dictionaryFlat.indexOf(firstWord);
+      const pos = dictionaryFlat.indexOf(secondWord);
+      if (section === -1 || pos === -1) {
+        document.getElementById("operative-output").textContent = "First or second word not found in dictionary.";
+        return;
+      }
+      const index = dictionaryFlat.length * section + pos;
+      if (index >= allCombos.length) {
+        document.getElementById("operative-output").textContent = "Combination index out of range.";
+        return;
+      }
+      const combo = allCombos[index];
+      document.getElementById("operative-output").textContent = "Output: " + combo.join(" ");
+    }
+
+    // Toggle between GUIs.
+    function showSpymaster() {
+      document.getElementById("spymasterDiv").style.display = "block";
+      document.getElementById("operativeDiv").style.display = "none";
+      updateSpymasterTotal();
+      validateSpymaster();
+    }
+    function showOperative() {
+      document.getElementById("spymasterDiv").style.display = "none";
+      document.getElementById("operativeDiv").style.display = "block";
+      updateOperativeTotal();
+      validateOperative();
+    }
+  </script>
+</body>
+</html>
